@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>AsrService</RootNamespace>
+    <AssemblyName>AsrService</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+
+    <!-- Native AOT for production builds (requires C++ tools) -->
+    <!-- Uncomment for final publish: -->
+    <!-- <PublishAot>true</PublishAot> -->
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ASR engine — sherpa-onnx (includes ONNX Runtime native libs) -->
+    <PackageReference Include="org.k2fsa.sherpa.onnx" Version="*" />
+
+    <!-- Audio capture (WASAPI) + mic volume control (CoreAudioApi) -->
+    <PackageReference Include="NAudio" Version="2.*" />
+
+    <!-- Windows Registry for auto-start -->
+    <PackageReference Include="Microsoft.Win32.Registry" Version="5.*" />
+
+    <!-- tar.bz2 extraction for model download -->
+    <PackageReference Include="SharpCompress" Version="0.*" />
+  </ItemGroup>
+
+</Project>
