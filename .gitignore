@@ -22,3 +22,7 @@ models/
 *.swp
 *~
 .idea/
+
+# Installer build artifacts
+installer/AsrService-Setup/
+installer/AsrService-Setup.zip

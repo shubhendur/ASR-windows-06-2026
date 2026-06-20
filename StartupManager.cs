@@ -19,7 +19,7 @@ public static class StartupManager
     /// <summary>Register the current exe to run on Windows login.</summary>
     public static void Install()
     {
-        string exePath = GetExePath();
+        string startCommand = GetStartCommand();
 
         using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
         if (key == null)
@@ -28,8 +28,8 @@ public static class StartupManager
             return;
         }
 
-        key.SetValue(AppName, $"\"{exePath}\"");
-        Console.WriteLine($"[Startup] Registered for auto-start: {exePath}");
+        key.SetValue(AppName, startCommand);
+        Console.WriteLine($"[Startup] Registered for auto-start: {startCommand}");
         Console.WriteLine("[Startup] The service will start automatically on next login.");
     }
 
@@ -61,12 +61,32 @@ public static class StartupManager
         return key?.GetValue(AppName) != null;
     }
 
-    private static string GetExePath()
+    /// <summary>
+    /// Build the command string for the auto-start registry value.
+    /// Handles both self-contained (EXE) and framework-dependent
+    /// (dotnet.exe host) deployments.
+    /// </summary>
+    private static string GetStartCommand()
     {
-        // For single-file / AOT published apps, Environment.ProcessPath
-        // gives the correct path to the executable.
-        return Environment.ProcessPath
+        string processPath = Environment.ProcessPath
             ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
             ?? throw new InvalidOperationException("Cannot determine executable path.");
+
+        // Check if we're running under dotnet.exe (framework-dependent deployment).
+        // In that case, Environment.ProcessPath returns dotnet.exe and we need
+        // to include the DLL path as an argument.
+        string processName = Path.GetFileNameWithoutExtension(processPath);
+        if (processName.Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+        {
+            // Get the entry assembly DLL location
+            string? dllPath = System.Reflection.Assembly.GetEntryAssembly()?.Location;
+            if (!string.IsNullOrEmpty(dllPath))
+            {
+                return $"\"{processPath}\" \"{dllPath}\"";
+            }
+        }
+
+        // Self-contained / AOT: the process IS our app executable
+        return $"\"{processPath}\"";
     }
 }
