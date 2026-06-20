@@ -89,7 +89,7 @@ public sealed class AsrEngine : IDisposable
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         // Create a stream and feed samples
-        var stream = _recognizer.CreateStream();
+        using var stream = _recognizer.CreateStream();
         stream.AcceptWaveform(SampleRate, samples);
 
         // Run inference

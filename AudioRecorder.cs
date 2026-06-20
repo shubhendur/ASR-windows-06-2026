@@ -24,6 +24,7 @@ public sealed class AudioRecorder : IDisposable
     // ── State ────────────────────────────────────────────────────
     private WasapiCapture? _capture;
     private MemoryStream? _rawBuffer;
+    private readonly object _bufferLock = new();
     private WaveFormat? _captureFormat;
     private bool _isRecording = false;
     private bool _disposed = false;
@@ -38,7 +39,10 @@ public sealed class AudioRecorder : IDisposable
     {
         if (_isRecording) return;
 
-        _rawBuffer = new MemoryStream();
+        lock (_bufferLock)
+        {
+            _rawBuffer = new MemoryStream();
+        }
         _capture = new WasapiCapture();
         _captureFormat = _capture.WaveFormat;
 
@@ -65,16 +69,22 @@ public sealed class AudioRecorder : IDisposable
         // Wait a moment for any remaining buffers to flush
         Thread.Sleep(50);
 
-        var samples = ProcessCapturedAudio();
+        float[]? samples;
+        lock (_bufferLock)
+        {
+            samples = ProcessCapturedAudio();
+            _rawBuffer?.Dispose();
+            _rawBuffer = null;
+        }
 
         // Cleanup capture resources
-        _capture.DataAvailable -= OnDataAvailable;
-        _capture.RecordingStopped -= OnRecordingStopped;
-        _capture.Dispose();
-        _capture = null;
-        _rawBuffer?.Dispose();
-        _rawBuffer = null;
-
+        if (_capture != null)
+        {
+            _capture.DataAvailable -= OnDataAvailable;
+            _capture.RecordingStopped -= OnRecordingStopped;
+            _capture.Dispose();
+            _capture = null;
+        }
         if (samples != null)
         {
             float durationSec = (float)samples.Length / TargetSampleRate;
@@ -88,13 +98,35 @@ public sealed class AudioRecorder : IDisposable
         return samples;
     }
 
+    /// <summary>
+    /// Resamples the current buffer, clears it, and returns the samples.
+    /// Can be called while recording is active.
+    /// </summary>
+    public float[]? Flush()
+    {
+        lock (_bufferLock)
+        {
+            if (_rawBuffer == null || _rawBuffer.Length == 0) return null;
+
+            var samples = ProcessCapturedAudio();
+            _rawBuffer.SetLength(0); // clear the buffer
+            return samples;
+        }
+    }
+
     // ── Audio Processing ─────────────────────────────────────────
 
     private void OnDataAvailable(object? sender, WaveInEventArgs e)
     {
-        if (e.BytesRecorded > 0 && _rawBuffer != null)
+        if (e.BytesRecorded > 0)
         {
-            _rawBuffer.Write(e.Buffer, 0, e.BytesRecorded);
+            lock (_bufferLock)
+            {
+                if (_rawBuffer != null)
+                {
+                    _rawBuffer.Write(e.Buffer, 0, e.BytesRecorded);
+                }
+            }
         }
     }
 
@@ -161,7 +193,10 @@ public sealed class AudioRecorder : IDisposable
         {
             if (_isRecording) StopRecording();
             _capture?.Dispose();
-            _rawBuffer?.Dispose();
+            lock (_bufferLock)
+            {
+                _rawBuffer?.Dispose();
+            }
             _disposed = true;
         }
     }
