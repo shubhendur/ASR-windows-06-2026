@@ -29,7 +29,7 @@ static class Program
     // from the first ~1 second of ambient audio when continuous mode
     // starts. Speech threshold is set relative to that noise floor.
     private const int CalibrationDurationMs  = 1000;   // 1s of ambient sampling at start
-    private const float NoiseFloorMultiplier = 3.5f;   // speech must be this many × louder than noise
+    private const float NoiseFloorMultiplier = 2f;   // speech must be this many × louder than noise
     private const float MinSpeechThreshold   = 0.003f; // absolute minimum (for very quiet rooms)
     private const float NoiseFloorAlpha      = 0.05f;  // exponential moving average weight for noise floor updates
     private const int SpeechOnsetFrames      = 2;      // consecutive speech frames required to confirm speech start (debounce)
@@ -581,12 +581,12 @@ static class Program
     private static void PrintBanner()
     {
         Console.WriteLine();
-        Console.WriteLine("  ╔═══════════════════════════════════════╗");
-        Console.WriteLine("  ║   🎙️  ASR Service for Windows 11     ║");
-        Console.WriteLine("  ║   Parakeet TDT 0.6B v2 (INT8 ONNX)  ║");
-        Console.WriteLine("  ║   Push-to-Talk: Hold Right Alt       ║");
-        Console.WriteLine("  ║   Continuous: Double-tap Right Alt   ║");
-        Console.WriteLine("  ╚═══════════════════════════════════════╝");
+        // Console.WriteLine("  ╔═══════════════════════════════════════╗");
+        // Console.WriteLine("  ║   🎙️  ASR Service for Windows 11     ║");
+        // Console.WriteLine("  ║   Parakeet TDT 0.6B v2 (INT8 ONNX)  ║");
+        // Console.WriteLine("  ║   Push-to-Talk: Hold Right Alt       ║");
+        // Console.WriteLine("  ║   Continuous: Double-tap Right Alt   ║");
+        // Console.WriteLine("  ╚═══════════════════════════════════════╝");
         Console.WriteLine();
     }
 }

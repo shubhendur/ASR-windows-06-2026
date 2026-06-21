@@ -1,16 +1,16 @@
-# ═══════════════════════════════════════════════════════════════════
-#  Uninstall.ps1 — ASR Service Uninstaller (No Admin Required)
+# ===================================================================
+#  Uninstall.ps1 - ASR Service Uninstaller (No Admin Required)
 #
 #  Removes the application, auto-start registration, and shortcuts.
 #  Optionally removes the downloaded AI model data.
 #
 #  Usage:
 #    powershell -ExecutionPolicy Bypass -File Uninstall.ps1
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 $ErrorActionPreference = "Stop"
 
-# ── Configuration ────────────────────────────────────────────────
+# -- Configuration ------------------------------------------------
 $AppName       = "AsrService"
 $InstallBase   = Join-Path $env:LOCALAPPDATA $AppName
 $AppInstallDir = Join-Path $InstallBase "app"
@@ -18,11 +18,11 @@ $LauncherDir   = Join-Path $InstallBase "launcher"
 $ModelsDir     = Join-Path $InstallBase "models"
 $RunKeyPath    = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
 
-# ── Banner ───────────────────────────────────────────────────────
+# -- Banner -------------------------------------------------------
 Write-Host ""
-Write-Host "  ╔═══════════════════════════════════════════════╗" -ForegroundColor Yellow
-Write-Host "  ║   ASR Service — Uninstaller                   ║" -ForegroundColor Yellow
-Write-Host "  ╚═══════════════════════════════════════════════╝" -ForegroundColor Yellow
+Write-Host "  ====================================================" -ForegroundColor Yellow
+Write-Host "    ASR Service - Uninstaller                          " -ForegroundColor Yellow
+Write-Host "  ====================================================" -ForegroundColor Yellow
 Write-Host ""
 
 if (-not (Test-Path $AppInstallDir)) {
@@ -32,7 +32,7 @@ if (-not (Test-Path $AppInstallDir)) {
     exit 0
 }
 
-# ── Step 1: Stop running instance ────────────────────────────────
+# -- Step 1: Stop running instance --------------------------------
 Write-Host "[1/5] Stopping running instances..." -ForegroundColor Yellow
 
 # Stop any dotnet process running our DLL
@@ -58,20 +58,20 @@ Get-Process -Name "wscript" -ErrorAction SilentlyContinue | ForEach-Object {
 }
 
 Start-Sleep -Seconds 1
-Write-Host "  ✓ Done" -ForegroundColor Green
+Write-Host "  [OK] Done" -ForegroundColor Green
 
-# ── Step 2: Remove auto-start ────────────────────────────────────
+# -- Step 2: Remove auto-start -----------------------------------
 Write-Host "[2/5] Removing auto-start registration..." -ForegroundColor Yellow
 
 $currentValue = Get-ItemProperty -Path $RunKeyPath -Name $AppName -ErrorAction SilentlyContinue
 if ($currentValue) {
     Remove-ItemProperty -Path $RunKeyPath -Name $AppName -ErrorAction SilentlyContinue
-    Write-Host "  ✓ Auto-start registration removed" -ForegroundColor Green
+    Write-Host "  [OK] Auto-start registration removed" -ForegroundColor Green
 } else {
     Write-Host "  (not registered)" -ForegroundColor DarkGray
 }
 
-# ── Step 3: Remove shortcuts ────────────────────────────────────
+# -- Step 3: Remove shortcuts ------------------------------------
 Write-Host "[3/5] Removing shortcuts..." -ForegroundColor Yellow
 
 $startMenuShortcut = Join-Path (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs") "ASR Service.lnk"
@@ -80,24 +80,24 @@ $desktopShortcut   = Join-Path ([Environment]::GetFolderPath("Desktop")) "ASR Se
 foreach ($lnk in @($startMenuShortcut, $desktopShortcut)) {
     if (Test-Path $lnk) {
         Remove-Item $lnk -Force
-        Write-Host "  ✓ Removed: $(Split-Path $lnk -Leaf)" -ForegroundColor Green
+        Write-Host "  [OK] Removed: $(Split-Path $lnk -Leaf)" -ForegroundColor Green
     }
 }
 
-# ── Step 4: Remove application files ────────────────────────────
+# -- Step 4: Remove application files ----------------------------
 Write-Host "[4/5] Removing application files..." -ForegroundColor Yellow
 
 if (Test-Path $AppInstallDir) {
     Remove-Item $AppInstallDir -Recurse -Force
-    Write-Host "  ✓ Removed: $AppInstallDir" -ForegroundColor Green
+    Write-Host "  [OK] Removed: $AppInstallDir" -ForegroundColor Green
 }
 
 if (Test-Path $LauncherDir) {
     Remove-Item $LauncherDir -Recurse -Force
-    Write-Host "  ✓ Removed: $LauncherDir" -ForegroundColor Green
+    Write-Host "  [OK] Removed: $LauncherDir" -ForegroundColor Green
 }
 
-# ── Step 5: Ask about model data ─────────────────────────────────
+# -- Step 5: Ask about model data --------------------------------
 Write-Host "[5/5] Model data..." -ForegroundColor Yellow
 
 if (Test-Path $ModelsDir) {
@@ -110,7 +110,7 @@ if (Test-Path $ModelsDir) {
 
     if ($removeModel -eq "y" -or $removeModel -eq "Y") {
         Remove-Item $ModelsDir -Recurse -Force
-        Write-Host "  ✓ Model data removed" -ForegroundColor Green
+        Write-Host "  [OK] Model data removed" -ForegroundColor Green
 
         # Remove the base directory if empty
         if ((Get-ChildItem $InstallBase -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0) {
@@ -128,9 +128,9 @@ if (Test-Path $ModelsDir) {
     }
 }
 
-# ── Done ─────────────────────────────────────────────────────────
+# -- Done ---------------------------------------------------------
 Write-Host ""
-Write-Host "  ╔═══════════════════════════════════════════════╗" -ForegroundColor Green
-Write-Host "  ║   ✓ ASR Service has been uninstalled          ║" -ForegroundColor Green
-Write-Host "  ╚═══════════════════════════════════════════════╝" -ForegroundColor Green
+Write-Host "  ====================================================" -ForegroundColor Green
+Write-Host "    ASR Service has been uninstalled                   " -ForegroundColor Green
+Write-Host "  ====================================================" -ForegroundColor Green
 Write-Host ""

@@ -1,3 +1,28 @@
+## What Was Created
+
+  ### Installer System (3 PowerShell scripts)
+
+  1. Build-Package.ps1 — Run on your dev machine to create a distributable  AsrService-Setup.zip . Publishes with  UseAppHost=false  so the output is only
+  DLLs (no  .exe  file that enterprise policies could block).
+  2. Install.ps1 — Run on the target machine. It:
+      • Checks for .NET 8 Desktop Runtime
+      • Copies app files to  %LOCALAPPDATA%\AsrService\app\
+      • Downloads the AI model (~670 MB) using the app's own  --download-model  command
+      • Creates a silent  .vbs  launcher for auto-start (no console window on login)
+      • Creates a visible  .cmd  launcher for the shortcut (shows status console)
+      • Registers auto-start via  HKCU  registry (no admin)
+      • Creates Desktop + Start Menu shortcuts
+  3. Uninstall.ps1 — Cleanly removes everything, with an option to keep or delete the model data.
+
+  ### Enterprise-Safe Design
+
+  The app runs via  dotnet.exe AsrService.dll  — since  dotnet.exe  is a Microsoft-signed system binary, it bypasses AppLocker/WDAC policies that block
+  custom EXEs and MSIs. The installer itself is a PowerShell text script, not an executable.
+  
+```Powershell
+PS C:\Users\Shubh\Documents\GitHub\ASR-windows-06-2026> $env:Path = "C:\Program Files\dotnet;" + $env:Path; dotnet run -- --install
+PS C:\Users\Shubh\Documents\GitHub\ASR-windows-06-2026> $env:Path = "C:\Program Files\dotnet;" + $env:Path; dotnet run -- --run
+```
 # 🎙️ ASR Service — Push-to-Talk Speech-to-Text for Windows
 
 **Blazing fast, offline speech recognition for Windows 11**

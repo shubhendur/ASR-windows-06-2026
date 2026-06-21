@@ -25,4 +25,4 @@ models/
 
 # Installer build artifacts
 installer/AsrService-Setup/
-installer/AsrService-Setup.zip
+# installer/AsrService-Setup.zip
