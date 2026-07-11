@@ -128,7 +128,7 @@ $cmdContent = "@echo off`r`ntitle ASR Service - Speech-to-Text`r`ncd /d `"$AppIn
 
 # Silent launcher (for auto-start - no visible window)
 $launcherVbs = Join-Path $LauncherDir "AsrService-Silent.vbs"
-$vbsContent = "Set WshShell = CreateObject(`"WScript.Shell`")`r`nWshShell.CurrentDirectory = `"$AppInstallDir`"`r`nWshShell.Run `"`"`"`"$dotnetPath`"`"`" `"`"`"$dllPath`"`"`"`", 0, False"
+$vbsContent = "Set WshShell = CreateObject(`"WScript.Shell`")`r`nWshShell.CurrentDirectory = `"$AppInstallDir`"`r`nWshShell.Run `"`"`"$dotnetPath`"`" `"`"$dllPath`"`"`", 0, False"
 [System.IO.File]::WriteAllText($launcherVbs, $vbsContent, [System.Text.Encoding]::ASCII)
 
 Write-Host "  [OK] Created launcher scripts" -ForegroundColor Green
