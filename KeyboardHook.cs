@@ -256,7 +256,6 @@ public sealed class KeyboardHook : IDisposable
             // This was a single short tap — fire start+stop as a quick tap-to-record.
             _waitingForSecondTap = false;
             // A single short tap is too brief to be useful, just ignore it.
-            Console.WriteLine("[Hook] Single short tap detected — ignoring (hold longer or double-tap).");
         }
     }
 

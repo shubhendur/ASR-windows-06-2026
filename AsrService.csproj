@@ -21,7 +21,8 @@
 
   <ItemGroup>
     <!-- ASR engine — sherpa-onnx (includes ONNX Runtime native libs) -->
-    <PackageReference Include="org.k2fsa.sherpa.onnx" Version="*" />
+    <!-- ≥1.13.4 required for Nemotron 3.5 multilingual streaming support -->
+    <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.13.4" />
 
     <!-- Audio capture (WASAPI) + mic volume control (CoreAudioApi) -->
     <PackageReference Include="NAudio" Version="2.*" />

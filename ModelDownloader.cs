@@ -1,127 +1,142 @@
 // ═══════════════════════════════════════════════════════════════════
-//  ModelDownloader.cs — Download Parakeet TDT 0.6B v2 INT8 ONNX
-//  Downloads and extracts the model from sherpa-onnx GitHub releases.
+//  ModelDownloader.cs — Downloads models described by ModelRegistry
+//  Supports tar.bz2 archives (sherpa-onnx releases) and per-file
+//  downloads (Hugging Face), plus the Silero VAD model.
 // ═══════════════════════════════════════════════════════════════════
 
-using SharpCompress.Archives;
 using SharpCompress.Common;
+using SharpCompress.Readers;
 
 namespace AsrService;
 
 /// <summary>
-/// Downloads the NVIDIA Parakeet TDT 0.6B v2 INT8 ONNX model bundle
-/// from the sherpa-onnx GitHub releases page and extracts it.
+/// Downloads and extracts ASR models and the Silero VAD model.
+/// Progress is reported via Console (redirected into the GUI log).
 /// </summary>
 public static class ModelDownloader
 {
-    // ── Constants ────────────────────────────────────────────────
-    private const string ModelUrl =
-        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/" +
-        "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2";
+    /// <summary>
+    /// Returns the default model directory path (default model) —
+    /// kept for backward compatibility with CLI commands.
+    /// </summary>
+    public static string GetDefaultModelDir() =>
+        ModelRegistry.GetModelDir(ModelRegistry.GetById(ModelRegistry.DefaultModelId));
 
-    private const string ModelDirName = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8";
-    private const string CheckFile = "encoder.int8.onnx"; // Presence = model is extracted
+    /// <summary>Returns true if the model files already exist at the given path.</summary>
+    public static bool IsModelPresent(string modelDir) =>
+        File.Exists(Path.Combine(modelDir, "encoder.int8.onnx"));
+
+    /// <summary>Download the default model (CLI --download-model).</summary>
+    public static Task DownloadModelAsync() =>
+        DownloadModelAsync(ModelRegistry.GetById(ModelRegistry.DefaultModelId));
 
     /// <summary>
-    /// Returns the default model directory path under %LOCALAPPDATA%.
+    /// Downloads the given model if not already present.
     /// </summary>
-    public static string GetDefaultModelDir()
+    public static async Task DownloadModelAsync(ModelInfo model, CancellationToken token = default)
     {
-        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(localAppData, "AsrService", "models", ModelDirName);
-    }
+        if (model.Loader == ModelLoader.Unsupported)
+            throw new NotSupportedException(model.Notes);
 
-    /// <summary>
-    /// Returns true if the model files already exist at the given path.
-    /// </summary>
-    public static bool IsModelPresent(string modelDir)
-    {
-        return File.Exists(Path.Combine(modelDir, CheckFile));
-    }
+        string modelDir = ModelRegistry.GetModelDir(model);
 
-    /// <summary>
-    /// Downloads and extracts the model. Shows progress in the console.
-    /// Skips if model files already exist.
-    /// </summary>
-    public static async Task DownloadModelAsync(string? targetDir = null)
-    {
-        string modelDir = targetDir ?? GetDefaultModelDir();
-        string modelsRoot = Path.GetDirectoryName(modelDir)!;
-
-        if (IsModelPresent(modelDir))
+        if (ModelRegistry.IsModelPresent(model))
         {
             Console.WriteLine($"[Download] Model already exists at: {modelDir}");
-            Console.WriteLine("[Download] Skipping download. Delete the folder to re-download.");
             return;
         }
 
-        Directory.CreateDirectory(modelsRoot);
-
-        string archivePath = Path.Combine(modelsRoot, "model-download.tar.bz2");
+        Directory.CreateDirectory(ModelRegistry.ModelsRoot);
 
         Console.WriteLine("═══════════════════════════════════════════════════════");
-        Console.WriteLine("  Downloading NVIDIA Parakeet TDT 0.6B v2 (INT8 ONNX)");
+        Console.WriteLine($"  Downloading: {model.DisplayName}");
         Console.WriteLine("═══════════════════════════════════════════════════════");
-        Console.WriteLine($"  URL:    {ModelUrl}");
-        Console.WriteLine($"  Target: {modelDir}");
-        Console.WriteLine();
 
-        try
+        if (model.ArchiveUrl != null)
         {
-            // ── Download ─────────────────────────────────────────
-            await DownloadFileAsync(ModelUrl, archivePath);
-
-            // ── Extract ──────────────────────────────────────────
-            Console.WriteLine();
-            Console.WriteLine("[Download] Extracting archive...");
-            ExtractArchive(archivePath, modelsRoot);
-
-            // ── Verify ───────────────────────────────────────────
-            if (IsModelPresent(modelDir))
+            await DownloadArchiveModelAsync(model, token);
+        }
+        else if (model.Files != null)
+        {
+            Directory.CreateDirectory(modelDir);
+            foreach (var (url, fileName) in model.Files)
             {
-                Console.WriteLine();
-                Console.WriteLine("[Download] ✓ Model downloaded and extracted successfully!");
-                Console.WriteLine($"[Download] Location: {modelDir}");
-
-                // List key files
-                var keyFiles = new[] { "encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt" };
-                foreach (var f in keyFiles)
+                token.ThrowIfCancellationRequested();
+                string dest = Path.Combine(modelDir, fileName);
+                if (File.Exists(dest))
                 {
-                    var fi = new FileInfo(Path.Combine(modelDir, f));
-                    if (fi.Exists)
-                        Console.WriteLine($"  ├── {f} ({fi.Length / (1024 * 1024.0):F1} MB)");
+                    Console.WriteLine($"[Download] Exists, skipping: {fileName}");
+                    continue;
                 }
-            }
-            else
-            {
-                Console.Error.WriteLine("[Download] ✗ Extraction completed but model files not found!");
-                Console.Error.WriteLine($"[Download] Expected: {Path.Combine(modelDir, CheckFile)}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[Download] ✗ Failed: {ex.Message}");
-            throw;
-        }
-        finally
-        {
-            // Clean up the archive file
-            if (File.Exists(archivePath))
-            {
-                try { File.Delete(archivePath); }
-                catch { /* Ignore cleanup errors */ }
+                Console.WriteLine($"[Download] Fetching {fileName}...");
+                // Download to a temp name first so partial files don't look complete
+                string tmp = dest + ".part";
+                await DownloadFileAsync(url, tmp, token);
+                File.Move(tmp, dest, overwrite: true);
             }
         }
+
+        if (ModelRegistry.IsModelPresent(model))
+            Console.WriteLine($"[Download] ✓ Model ready at: {modelDir}");
+        else
+            throw new FileNotFoundException(
+                $"Download finished but check file missing: {Path.Combine(modelDir, model.CheckFile)}");
+    }
+
+    /// <summary>Downloads the Silero VAD model (~2 MB) if not present.</summary>
+    public static async Task DownloadSileroVadAsync(CancellationToken token = default)
+    {
+        if (ModelRegistry.IsSileroVadPresent()) return;
+
+        Directory.CreateDirectory(ModelRegistry.ModelsRoot);
+        Console.WriteLine("[Download] Fetching Silero VAD model (~2 MB)...");
+        string tmp = ModelRegistry.SileroVadPath + ".part";
+        await DownloadFileAsync(ModelRegistry.SileroVadUrl, tmp, token);
+        File.Move(tmp, ModelRegistry.SileroVadPath, overwrite: true);
+        Console.WriteLine("[Download] ✓ Silero VAD ready.");
+    }
+
+    /// <summary>Downloads the TEN VAD model (~1 MB) if not present.</summary>
+    public static async Task DownloadTenVadAsync(CancellationToken token = default)
+    {
+        if (ModelRegistry.IsTenVadPresent()) return;
+
+        Directory.CreateDirectory(ModelRegistry.ModelsRoot);
+        Console.WriteLine("[Download] Fetching TEN VAD model (~1 MB)...");
+        string tmp = ModelRegistry.TenVadPath + ".part";
+        await DownloadFileAsync(ModelRegistry.TenVadUrl, tmp, token);
+        File.Move(tmp, ModelRegistry.TenVadPath, overwrite: true);
+        Console.WriteLine("[Download] ✓ TEN VAD ready.");
+    }
+
+    // ── Archive-based models (tar.bz2) ───────────────────────────
+
+    private static async Task DownloadArchiveModelAsync(ModelInfo model, CancellationToken token)
+    {
+        string archivePath = Path.Combine(ModelRegistry.ModelsRoot, model.DirName + ".tar.bz2");
+
+        // Reuse a previously downloaded archive (e.g. after a failed extraction)
+        if (!File.Exists(archivePath))
+            await DownloadFileAsync(model.ArchiveUrl!, archivePath, token);
+        else
+            Console.WriteLine("[Download] Archive already present, skipping download.");
+
+        Console.WriteLine("[Download] Extracting archive...");
+        ExtractArchive(archivePath, ModelRegistry.ModelsRoot);
+
+        // Delete only after successful extraction
+        try { File.Delete(archivePath); }
+        catch { /* Ignore cleanup errors */ }
     }
 
     // ── Download with Progress ───────────────────────────────────
 
-    private static async Task DownloadFileAsync(string url, string destPath)
+    private static async Task DownloadFileAsync(string url, string destPath, CancellationToken token = default)
     {
         using var httpClient = new HttpClient();
-        httpClient.Timeout = TimeSpan.FromMinutes(30); // Large file
+        httpClient.Timeout = TimeSpan.FromMinutes(60); // Large files
 
-        using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+        using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token);
         response.EnsureSuccessStatusCode();
 
         long? totalBytes = response.Content.Headers.ContentLength;
@@ -131,7 +146,7 @@ public static class ModelDownloader
 
         Console.WriteLine($"[Download] File size: {totalStr}");
 
-        await using var contentStream = await response.Content.ReadAsStreamAsync();
+        await using var contentStream = await response.Content.ReadAsStreamAsync(token);
         await using var fileStream = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920);
 
         byte[] buffer = new byte[81920];
@@ -139,9 +154,9 @@ public static class ModelDownloader
         int bytesRead;
         int lastPercent = -1;
 
-        while ((bytesRead = await contentStream.ReadAsync(buffer)) > 0)
+        while ((bytesRead = await contentStream.ReadAsync(buffer, token)) > 0)
         {
-            await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead));
+            await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), token);
             totalRead += bytesRead;
 
             if (totalBytes.HasValue)
@@ -150,37 +165,63 @@ public static class ModelDownloader
                 if (percent != lastPercent && percent % 5 == 0)
                 {
                     lastPercent = percent;
-                    Console.Write($"\r[Download] Progress: {percent}% ({totalRead / (1024 * 1024.0):F1} / {totalStr})    ");
+                    Console.WriteLine($"[Download] Progress: {percent}% ({totalRead / (1024 * 1024.0):F1} / {totalStr})");
                 }
             }
         }
 
-        Console.WriteLine($"\r[Download] Downloaded: {totalRead / (1024 * 1024.0):F1} MB                              ");
+        Console.WriteLine($"[Download] Downloaded: {totalRead / (1024 * 1024.0):F1} MB");
     }
 
     // ── Archive Extraction ───────────────────────────────────────
 
     private static void ExtractArchive(string archivePath, string destDir)
     {
-        using var archive = ArchiveFactory.OpenArchive(archivePath);
-        int fileCount = 0;
+        // SharpCompress cannot extract .tar.bz2 from a non-seekable stream,
+        // so decompress bzip2 → temp .tar on disk first (seekable), then
+        // extract the tar. Temp cost: ~1 GB, deleted immediately after.
+        string tarPath = archivePath;
+        bool tempTar = false;
 
-        foreach (var entry in archive.Entries)
+        if (archivePath.EndsWith(".bz2", StringComparison.OrdinalIgnoreCase))
         {
-            if (!entry.IsDirectory)
-            {
-                entry.WriteToDirectory(destDir, new ExtractionOptions
-                {
-                    ExtractFullPath = true,
-                    Overwrite = true
-                });
-                fileCount++;
-
-                if (fileCount % 10 == 0)
-                    Console.Write($"\r[Download] Extracted {fileCount} files...    ");
-            }
+            tarPath = archivePath[..^4]; // strip ".bz2"
+            tempTar = true;
+            Console.WriteLine("[Download] Decompressing bzip2...");
+            using Stream fileStream = File.OpenRead(archivePath);
+            using Stream bz2 = SharpCompress.Compressors.BZip2.BZip2Stream.Create(
+                fileStream, SharpCompress.Compressors.CompressionMode.Decompress, false);
+            using var tarOut = File.Create(tarPath);
+            bz2.CopyTo(tarOut, 1 << 20);
         }
 
-        Console.WriteLine($"\r[Download] Extracted {fileCount} files total.                    ");
+        try
+        {
+            using var reader = SharpCompress.Readers.Tar.TarReader.OpenReader(tarPath, null);
+            int fileCount = 0;
+
+            while (reader.MoveToNextEntry())
+            {
+                if (!reader.Entry.IsDirectory)
+                {
+                    reader.WriteEntryToDirectory(destDir, new ExtractionOptions
+                    {
+                        ExtractFullPath = true,
+                        Overwrite = true
+                    });
+                    fileCount++;
+                }
+            }
+
+            Console.WriteLine($"[Download] Extracted {fileCount} files total.");
+        }
+        finally
+        {
+            if (tempTar)
+            {
+                try { File.Delete(tarPath); }
+                catch { /* Ignore cleanup errors */ }
+            }
+        }
     }
 }
