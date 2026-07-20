@@ -1,6 +1,9 @@
 ## create dotnet DLL files to share it with any user for installation. 
 ```powershell
-dotnet publish -c Release -r win-x64 --self-contained trueYeah. 
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+```
+```powershell
+dotnet publish -c Release -r win-x64 --self-contained true 
 ```
 ```powershell
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
