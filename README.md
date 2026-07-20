@@ -1,3 +1,13 @@
+## create dotnet DLL files to share it with any user for installation. 
+```powershell
+dotnet publish -c Release -r win-x64 --self-contained trueYeah. 
+```
+```powershell
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+```
+
+
+
 # 🎙️ ASR Service — Offline Speech-to-Text for Windows (+ Android)
 
 **Fast, fully offline speech recognition.** Uses **NVIDIA Parakeet TDT 0.6B v2**
@@ -126,3 +136,4 @@ Performance on an i7-1355U: ~15–25× realtime, ~2 GB RAM with Parakeet loaded.
 [Silero VAD](https://github.com/snakers4/silero-vad) (MIT) ·
 [NAudio](https://github.com/naudio/NAudio) (MIT) ·
 FFmpeg (LGPL/GPL, downloaded separately at first use)
+

@@ -44,6 +44,9 @@ public sealed class AsrController : IDisposable
     public bool IsContinuousMode => _isContinuousMode;
     public bool IsModelLoaded => _engine.IsReady;
 
+    /// <summary>Id of the model currently loaded in the engine, or null if none.</summary>
+    public string? LoadedModelId => _engine.LoadedModel?.Id;
+
     /// <summary>Fired when continuous mode starts/stops (for UI updates).</summary>
     public event Action<bool>? ContinuousModeChanged;
 
@@ -79,10 +82,16 @@ public sealed class AsrController : IDisposable
     }
 
     /// <summary>Ensures the currently selected VAD model is on disk.</summary>
-    private Task EnsureVadDownloadedAsync(CancellationToken token) =>
+    public Task EnsureVadDownloadedAsync(CancellationToken token = default) =>
         Settings.VadEngine == "ten"
             ? ModelDownloader.DownloadTenVadAsync(token)
             : ModelDownloader.DownloadSileroVadAsync(token);
+
+    /// <summary>True when the selected VAD engine's model is present on disk.</summary>
+    private bool IsSelectedVadPresent() =>
+        Settings.VadEngine == "ten"
+            ? ModelRegistry.IsTenVadPresent()
+            : ModelRegistry.IsSileroVadPresent();
 
     private AudioDeviceInfo SelectedDevice => new()
     {
@@ -105,6 +114,9 @@ public sealed class AsrController : IDisposable
 
         await EnsureVadDownloadedAsync(token);
 
+        // Pick up any language change made in the GUI since the model loaded.
+        _engine.Language = Settings.Language;
+
         return await FileTranscriber.TranscribeAsync(path, _engine, Settings, token);
     }
 
@@ -119,6 +131,9 @@ public sealed class AsrController : IDisposable
             Console.WriteLine("[Service] Model not loaded yet — ignoring push-to-talk.");
             return;
         }
+
+        // Pick up any language change made in the GUI since the model loaded.
+        _engine.Language = Settings.Language;
 
         try
         {
@@ -185,8 +200,21 @@ public sealed class AsrController : IDisposable
             return;
         }
 
+        // Pick up any language change made in the GUI since the model loaded.
+        _engine.Language = Settings.Language;
+        Console.WriteLine($"[ASR] Transcription language: {Settings.Language}");
+
         try
         {
+            // The selected VAD model may not be downloaded yet (e.g. the user
+            // switched to TEN VAD after the model was loaded with Silero).
+            // Fetch it now — it's tiny (~300 KB–2 MB) and only happens once.
+            if (!IsSelectedVadPresent())
+            {
+                Console.WriteLine($"[VAD] Downloading {Settings.VadEngine} VAD model...");
+                EnsureVadDownloadedAsync().GetAwaiter().GetResult();
+            }
+
             // Recreate each start so a VAD-engine change in the GUI takes effect.
             _vad?.Dispose();
             _vad = CreateVad();

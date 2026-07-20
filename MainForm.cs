@@ -216,6 +216,14 @@ public sealed class MainForm : Form
             _controller.Settings.VadEngine = vad.Code;
             _controller.Settings.Save();
             AppendLog($"[GUI] VAD engine: {vad.Display}", false);
+
+            // Pre-fetch the VAD model in the background so continuous mode
+            // starts instantly (and doesn't silently fail if it's missing).
+            _ = Task.Run(async () =>
+            {
+                try { await _controller.EnsureVadDownloadedAsync(); }
+                catch (Exception ex) { AppendLog($"[ERROR] VAD download failed: {ex.Message}", true); }
+            });
         };
 
         _loadButton.Click += async (_, _) => await LoadModelAsync();
@@ -269,14 +277,22 @@ public sealed class MainForm : Form
     private void RefreshLoadButtonState()
     {
         var model = (ModelInfo)_modelCombo.SelectedItem!;
-        bool downloaded = model.Loader != ModelLoader.Unsupported && ModelRegistry.IsModelPresent(model);
+        bool supported  = model.Loader != ModelLoader.Unsupported;
+        bool downloaded = supported && ModelRegistry.IsModelPresent(model);
+        bool isActive   = downloaded && _controller.LoadedModelId == model.Id;
 
+        // Enabled whenever the selected model is NOT the one currently loaded —
+        // so a downloaded-but-inactive model can still be switched to. Only the
+        // active model disables the button (nothing left to do). If it isn't
+        // downloaded yet, the click downloads then loads it.
         _loadButton.Enabled = !_busy
                               && !_controller.IsContinuousMode
-                              && model.Loader != ModelLoader.Unsupported
-                              && !downloaded;
+                              && supported
+                              && !isActive;
 
-        _loadButton.Text = downloaded ? "Model downloaded ✓" : "Download && Load Model";
+        _loadButton.Text = isActive   ? "Model loaded ✓"
+                         : downloaded ? "Load Model"
+                         : "Download && Load Model";
     }
 
     /// <summary>Used by Program.cs to load an already-downloaded model on startup.</summary>
